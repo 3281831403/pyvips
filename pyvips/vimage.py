@@ -8,6 +8,7 @@ import sys
 import pyvips
 from pyvips import ffi, glib_lib, vips_lib, Error, _to_bytes, \
     _to_string, _to_string_copy, GValue, at_least_libvips, Introspect
+from pyvips.vcallbacks import check_callback_error
 
 
 # either a single number, or a table of numbers
@@ -635,7 +636,9 @@ class Image(pyvips.VipsObject, metaclass=ImageType):
         """
         pointer = vips_lib.vips_foreign_find_load_source(source.pointer)
         if pointer == ffi.NULL:
+            check_callback_error()
             raise Error('unable to load from source')
+        check_callback_error()
         name = _to_string(pointer)
 
         image = pyvips.Operation.call(name, source,
@@ -728,9 +731,13 @@ class Image(pyvips.VipsObject, metaclass=ImageType):
         """
         vi = vips_lib.vips_image_copy_memory(self.pointer)
         if vi == ffi.NULL:
+            check_callback_error()
             raise Error('unable to copy to memory')
 
-        return pyvips.Image(vi)
+        image = pyvips.Image(vi)
+        check_callback_error()
+
+        return image
 
     # writers
 
@@ -923,8 +930,10 @@ class Image(pyvips.VipsObject, metaclass=ImageType):
         psize = ffi.new('size_t *')
         pointer = vips_lib.vips_image_write_to_memory(self.pointer, psize)
         if pointer == ffi.NULL:
+            check_callback_error()
             raise Error('unable to write to memory')
         pointer = ffi.gc(pointer, glib_lib.g_free)
+        check_callback_error()
 
         return ffi.buffer(pointer, psize[0])
 
@@ -946,7 +955,9 @@ class Image(pyvips.VipsObject, metaclass=ImageType):
         """
         result = vips_lib.vips_image_write(self.pointer, other.pointer)
         if result != 0:
+            check_callback_error()
             raise Error('unable to write to image')
+        check_callback_error()
 
     def invalidate(self):
         """Drop caches on an image, and any downstream images.

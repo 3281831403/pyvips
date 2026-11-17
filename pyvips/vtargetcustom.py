@@ -32,7 +32,17 @@ class TargetCustom(pyvips.Target):
         """
 
         def interface_handler(buf):
-            return handler(buf)
+            length = len(buf)
+            written = handler(buf)
+
+            if isinstance(written, bool) or not isinstance(written, int):
+                raise TypeError('write must return an integer number of bytes')
+
+            if written < 0 or written > length:
+                raise ValueError(f'write returned {written} bytes, '
+                                 f'expected between 0 and {length}')
+
+            return written
 
         self.signal_connect("write", interface_handler)
 
@@ -51,11 +61,16 @@ class TargetCustom(pyvips.Target):
         """
 
         def interface_handler(buf):
-            chunk = handler(len(buf))
+            size = len(buf)
+            chunk = handler(size)
             if chunk is None:
                 return 0
 
             bytes_read = len(chunk)
+            if bytes_read > size:
+                raise ValueError(f'read returned {bytes_read} bytes, '
+                                 f'but only {size} were requested')
+
             buf[:bytes_read] = chunk
 
             return bytes_read

@@ -179,3 +179,198 @@ class TestConnections:
         image2 = pyvips.Image.new_from_file(WEBP_FILE, access='sequential')
 
         assert (image - image2).abs().max() == 0
+
+    # exceptions raised by custom source/target callbacks must reach the
+    # caller with their original type and message, and must not leave the
+    # process unable to process the next image
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_source_custom_pixels_match_file(self):
+        input_file = open(JPEG_FILE, "rb")
+
+        def read_handler(size):
+            return input_file.read(size)
+
+        source = pyvips.SourceCustom()
+        source.on_read(read_handler)
+
+        image = pyvips.Image.new_from_source(source, '',
+                                             access='sequential')
+        image2 = pyvips.Image.new_from_file(JPEG_FILE, access='sequential')
+
+        # every pixel of every band must be identical
+        assert image.width == image2.width
+        assert image.height == image2.height
+        assert image.bands == image2.bands
+        assert (image - image2).abs().max() == 0
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_source_custom_read_exception(self):
+        input_file = open(JPEG_FILE, "rb")
+        calls = {"n": 0}
+
+        def read_handler(size):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise IOError("simulated 503")
+            return input_file.read(size)
+
+        source = pyvips.SourceCustom()
+        source.on_read(read_handler)
+
+        with pytest.raises(OSError, match="simulated 503"):
+            pyvips.Image.new_from_source(source, '', access='sequential')
+
+        # the failure must not poison later loads
+        input_file2 = open(JPEG_FILE, "rb")
+
+        def read_handler2(size):
+            return input_file2.read(size)
+
+        source2 = pyvips.SourceCustom()
+        source2.on_read(read_handler2)
+
+        image = pyvips.Image.new_from_source(source2, '',
+                                             access='sequential')
+        image2 = pyvips.Image.new_from_file(JPEG_FILE, access='sequential')
+
+        assert (image - image2).abs().max() == 0
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_source_custom_read_exception_sniff(self):
+        def read_handler(size):
+            raise IOError("simulated 503")
+
+        source = pyvips.SourceCustom()
+        source.on_read(read_handler)
+
+        with pytest.raises(OSError, match="simulated 503"):
+            pyvips.Image.new_from_source(source, '', access='sequential')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_source_custom_overread(self):
+        def read_handler(size):
+            return b'\x00' * (size + 1)
+
+        source = pyvips.SourceCustom()
+        source.on_read(read_handler)
+
+        with pytest.raises(ValueError, match="but only"):
+            pyvips.Image.new_from_source(source, '', access='sequential')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_source_custom_seek_exception(self):
+        input_file = open(JPEG_FILE, "rb")
+
+        def read_handler(size):
+            return input_file.read(size)
+
+        def seek_handler(offset, whence):
+            raise IOError("simulated 503")
+
+        source = pyvips.SourceCustom()
+        source.on_read(read_handler)
+        source.on_seek(seek_handler)
+
+        with pytest.raises(OSError, match="simulated 503"):
+            pyvips.Image.new_from_source(source, '', access='random')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_target_custom_write_exception(self):
+        def write_handler(chunk):
+            raise IOError("simulated 503")
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_handler)
+
+        image = pyvips.Image.new_from_file(JPEG_FILE)
+
+        with pytest.raises(OSError, match="simulated 503"):
+            image.write_to_target(target, '.png')
+
+        # a good write must still work afterwards
+        image.write_to_buffer('.png')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_target_custom_write_invalid_length(self):
+        image = pyvips.Image.new_from_file(JPEG_FILE)
+
+        def write_long(chunk):
+            return len(chunk) + 1
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_long)
+
+        with pytest.raises(ValueError, match="expected between"):
+            image.write_to_target(target, '.png')
+
+        def write_negative(chunk):
+            return -1
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_negative)
+
+        with pytest.raises(ValueError, match="expected between"):
+            image.write_to_target(target, '.png')
+
+        def write_non_int(chunk):
+            return "nope"
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_non_int)
+
+        with pytest.raises(TypeError, match="integer"):
+            image.write_to_target(target, '.png')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 9),
+                        reason="requires libvips >= 8.9")
+    def test_target_custom_end_exception(self):
+        def write_handler(chunk):
+            return len(chunk)
+
+        def end_handler():
+            raise IOError("shard not fully uploaded")
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_handler)
+        target.on_end(end_handler)
+
+        image = pyvips.Image.new_from_file(JPEG_FILE)
+
+        with pytest.raises(OSError, match="shard not fully uploaded"):
+            image.write_to_target(target, '.png')
+
+    @skip_if_no('jpegload')
+    @pytest.mark.skipif(not pyvips.at_least_libvips(8, 13),
+                        reason="requires libvips >= 8.13")
+    def test_target_custom_end_error(self):
+        def write_handler(chunk):
+            return len(chunk)
+
+        def end_handler():
+            return -1
+
+        target = pyvips.TargetCustom()
+        target.on_write(write_handler)
+        target.on_end(end_handler)
+
+        image = pyvips.Image.new_from_file(JPEG_FILE)
+
+        # on_end returning -1 must keep raising a libvips error
+        with pytest.raises(pyvips.Error):
+            image.write_to_target(target, '.png')

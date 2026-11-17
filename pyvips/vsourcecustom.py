@@ -35,11 +35,16 @@ class SourceCustom(pyvips.Source):
         """
 
         def interface_handler(buf):
-            chunk = handler(len(buf))
+            size = len(buf)
+            chunk = handler(size)
             if chunk is None:
                 return 0
 
             bytes_read = len(chunk)
+            if bytes_read > size:
+                raise ValueError(f'read returned {bytes_read} bytes, '
+                                 f'but only {size} were requested')
+
             buf[:bytes_read] = chunk
 
             return bytes_read

@@ -1,6 +1,8 @@
 ## master
 
 - new_from_array() propagate interpretation into array interfaces [BSAIPF]
+- propagate exceptions raised in custom source/target/progress callbacks to
+  the caller, and fail on invalid read/write callback lengths
 
 ## Version 3.2.0 (released 29 Aug 2026)
 

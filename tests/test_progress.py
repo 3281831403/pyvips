@@ -77,3 +77,23 @@ class TestProgress:
 
         with pytest.raises(Exception):
             image.copy_memory()
+
+    def test_progress_exception(self):
+        # an exception raised by a progress callback must reach the caller
+        # with its original type and message
+        class Boom(Exception):
+            pass
+
+        def eval_cb(image, progress):
+            raise Boom("progress exploded")
+
+        image = pyvips.Image.black(1, 100001)
+        image.set_progress(True)
+        image.signal_connect('eval', eval_cb)
+
+        with pytest.raises(Boom, match="progress exploded"):
+            image.copy_memory()
+
+        # and processing must still work afterwards
+        image = pyvips.Image.black(1, 100002)
+        assert image.avg() == 0.0

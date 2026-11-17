@@ -2,6 +2,7 @@
 
 import pyvips
 from pyvips import ffi, glib_lib, vips_lib, Error, at_least_libvips
+from pyvips.vcallbacks import check_callback_error
 
 
 class Region(pyvips.VipsObject):
@@ -66,9 +67,11 @@ class Region(pyvips.VipsObject):
         psize = ffi.new('size_t *')
         pointer = vips_lib.vips_region_fetch(self.pointer, x, y, w, h, psize)
         if pointer == ffi.NULL:
+            check_callback_error()
             raise Error('unable to fetch from region')
 
         pointer = ffi.gc(pointer, glib_lib.g_free)
+        check_callback_error()
         return ffi.buffer(pointer, psize[0])
 
 

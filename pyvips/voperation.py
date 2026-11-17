@@ -3,6 +3,7 @@ import logging
 import pyvips
 from pyvips import ffi, vips_lib, Error, _to_bytes, _to_string, GValue, \
     type_map, type_from_name, nickname_find, at_least_libvips
+from pyvips.vcallbacks import check_callback_error
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +300,7 @@ class Operation(pyvips.VipsObject):
         vop = vips_lib.vips_cache_operation_build(op.pointer)
         if vop == ffi.NULL:
             vips_lib.vips_object_unref_outputs(op.vobject)
+            check_callback_error()
             raise Error(f'unable to call {operation_name}')
         op = Operation(vop)
 
@@ -334,6 +336,8 @@ class Operation(pyvips.VipsObject):
             result = result[0]
 
         logger.debug('VipsOperation.call: result = %s', result)
+
+        check_callback_error()
 
         return result
 
